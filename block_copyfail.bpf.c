@@ -15,6 +15,18 @@
 struct socket;
 struct sockaddr;
 
+/* struct sockaddr_alg layout (from linux/if_alg.h):
+ *   offset 0:  __u16  salg_family
+ *   offset 2:  __u8   salg_type[14]
+ *   offset 16: __u32  salg_feat
+ *   offset 20: __u32  salg_mask
+ *   offset 24: __u8   salg_name[64]
+ * We need at least 34 bytes to check "authencesn" (10 chars at offset 24).
+ */
+#define SOCKADDR_ALG_MIN_LEN 34
+
+static const char authencesn_prefix[10] = "authencesn";
+
 struct {
 	__uint(type, BPF_MAP_TYPE_RINGBUF);
 	__uint(max_entries, 4096);
@@ -22,9 +34,15 @@ struct {
 
 SEC("lsm/socket_bind")
 int BPF_PROG(block_copyfail, struct socket *sock,
-	     struct sockaddr *address, int addrlen)
+	     struct sockaddr *address, int addrlen, int ret)
 {
-	__u8 buf[34];
+	if (ret)
+		return ret;
+
+	if (addrlen < SOCKADDR_ALG_MIN_LEN)
+		return 0;
+
+	__u8 buf[SOCKADDR_ALG_MIN_LEN];
 
 	if (bpf_probe_read_kernel(buf, sizeof(buf), address) < 0)
 		return 0;
@@ -33,14 +51,8 @@ int BPF_PROG(block_copyfail, struct socket *sock,
 	if (family != AF_ALG)
 		return 0;
 
-	/* "auth" at salg_name offset 24 */
-	__u32 w0 = *(__u32 *)&buf[24];
-	/* "ence" at offset 28 */
-	__u32 w1 = *(__u32 *)&buf[28];
-	/* "sn" at offset 32 */
-	__u16 w2 = *(__u16 *)&buf[32];
-
-	if (w0 != 0x68747561 || w1 != 0x65636e65 || w2 != 0x6e73)
+	if (__builtin_memcmp(&buf[SOCKADDR_ALG_NAME_OFFSET],
+			     authencesn_prefix, 10) != 0)
 		return 0;
 
 	struct block_event *evt;
