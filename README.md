@@ -438,6 +438,49 @@ block-copyfail: blocker active — authencesn bind blocked
 block-copyfail: BLOCKED pid=16777    comm=python3 time=2026-05-01 16:37:23
 ```
 
+### Verifying Other Algorithms Are Unaffected
+
+Run `verify-algos.py` on a node to confirm that only `authencesn` is blocked
+while other AF\_ALG algorithms (GCM, CCM, SHA-256, AES-CBC) continue to work:
+
+```bash
+oc debug node/<any-node> -- chroot /host python3 -c "
+import socket
+tests = [
+    ('aead',     'gcm(aes)'),
+    ('aead',     'ccm(aes)'),
+    ('aead',     'rfc4106(gcm(aes))'),
+    ('hash',     'sha256'),
+    ('skcipher', 'cbc(aes)'),
+    ('aead',     'authencesn(hmac(sha256),cbc(aes))'),
+]
+for t, n in tests:
+    s = socket.socket(socket.AF_ALG, socket.SOCK_SEQPACKET, 0)
+    try:
+        s.bind((t, n))
+        print(f'  ALLOWED  {t}/{n}')
+    except OSError as e:
+        print(f'  BLOCKED  {t}/{n} -- {e}')
+    finally:
+        s.close()
+"
+```
+
+Expected output:
+
+```
+  ALLOWED  aead/gcm(aes)
+  ALLOWED  aead/ccm(aes)
+  ALLOWED  aead/rfc4106(gcm(aes))
+  ALLOWED  hash/sha256
+  ALLOWED  skcipher/cbc(aes)
+  BLOCKED  aead/authencesn(hmac(sha256),cbc(aes)) -- [Errno 1] Operation not permitted
+```
+
+This confirms the BPF LSM only blocks the vulnerable algorithm.
+
+---
+
 ## Building the Image from Source
 
 The BPF LSM blocker source is in `block-copyfail/`:
