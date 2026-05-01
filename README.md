@@ -16,11 +16,11 @@ end-to-end on three separate OCP 4.22 clusters.
 oc debug node/<any-node> -- chroot /host cat /sys/kernel/security/lsm
 # Must contain "bpf"
 
-# 2. Deploy the blocker (image: quay.io/mrunalp/block-copyfail:latest)
+# 2. Deploy the namespace and grant privileged SCC
 oc apply -f daemonset.yaml
-
-# 3. Grant privileged SCC to the service account
 oc adm policy add-scc-to-user privileged -z default -n block-copyfail
+
+# 3. DaemonSet pods will start automatically on all nodes
 
 # 4. Verify
 oc get pods -n block-copyfail     # All nodes should show Running
@@ -308,11 +308,14 @@ spec:
     - lsm=lockdown,capability,selinux,bpf
 ```
 
-### Step 1: Deploy the DaemonSet
+### Step 1: Create the namespace, grant the SCC, and deploy
+
+The privileged SCC must be granted before the DaemonSet pods are created,
+otherwise pod creation will fail with SCC validation errors.
 
 ```bash
+# Create the namespace
 cat <<'EOF' | oc apply -f -
----
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -321,7 +324,13 @@ metadata:
     pod-security.kubernetes.io/enforce: privileged
     pod-security.kubernetes.io/audit: privileged
     pod-security.kubernetes.io/warn: privileged
----
+EOF
+
+# Grant privileged SCC to the default service account
+oc adm policy add-scc-to-user privileged -z default -n block-copyfail
+
+# Deploy the DaemonSet
+cat <<'EOF' | oc apply -f -
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -372,13 +381,7 @@ spec:
 EOF
 ```
 
-### Step 2: Grant the privileged SCC
-
-```bash
-oc adm policy add-scc-to-user privileged -z default -n block-copyfail
-```
-
-### Step 3: Wait for pods to start on all nodes
+### Step 2: Wait for pods to start on all nodes
 
 ```bash
 oc get pods -n block-copyfail -o wide
@@ -396,7 +399,7 @@ block-copyfail-m26sx   1/1     Running   34s   ci-...-worker-b
 block-copyfail-xsh6d   1/1     Running   34s   ci-...-master-0
 ```
 
-### Step 4: Verify the blocker is active
+### Step 3: Verify the blocker is active
 
 ```bash
 oc logs -n block-copyfail -l app=block-copyfail
