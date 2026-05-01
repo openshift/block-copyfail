@@ -28,37 +28,10 @@ static int handle_event(void *ctx, void *data, size_t len)
 	return 0;
 }
 
-static int check_bpf_lsm(void)
-{
-	FILE *f = fopen("/sys/kernel/security/lsm", "r");
-	if (!f) {
-		fprintf(stderr, "block-copyfail: /sys/kernel/security/lsm not readable, skipping check\n");
-		return 0;
-	}
-
-	char buf[256];
-	if (!fgets(buf, sizeof(buf), f)) {
-		fclose(f);
-		return 0;
-	}
-	fclose(f);
-
-	if (!strstr(buf, "bpf")) {
-		fprintf(stderr,
-			"block-copyfail: BPF LSM not enabled.\n"
-			"Add lsm=lockdown,capability,selinux,bpf to kernel boot parameters.\n");
-		return -1;
-	}
-	return 0;
-}
-
 int main(int argc, char **argv)
 {
 	struct block_copyfail_bpf *skel;
 	struct ring_buffer *rb;
-
-	if (check_bpf_lsm())
-		return 1;
 
 	skel = block_copyfail_bpf__open_and_load();
 	if (!skel) {
