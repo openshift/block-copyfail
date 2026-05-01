@@ -23,8 +23,10 @@ struct sockaddr;
  *   offset 24: __u8   salg_name[64]
  * We need at least 34 bytes to check "authencesn" (10 chars at offset 24).
  */
+#define SOCKADDR_ALG_TYPE_OFFSET 2
 #define SOCKADDR_ALG_MIN_LEN 34
 
+static const char aead_type[4] = "aead";
 static const char authencesn_prefix[10] = "authencesn";
 
 struct {
@@ -49,6 +51,9 @@ int BPF_PROG(block_copyfail, struct socket *sock,
 
 	__u16 family = *(__u16 *)&buf[0];
 	if (family != AF_ALG)
+		return 0;
+
+	if (__builtin_memcmp(&buf[SOCKADDR_ALG_TYPE_OFFSET], aead_type, 4) != 0)
 		return 0;
 
 	if (__builtin_memcmp(&buf[SOCKADDR_ALG_NAME_OFFSET],
