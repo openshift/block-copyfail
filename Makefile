@@ -2,7 +2,7 @@ CLANG   ?= clang
 BPFTOOL ?= bpftool
 CC      ?= gcc
 
-ARCH := $(shell uname -m | sed 's/x86_64/x86/' | sed 's/aarch64/arm64/')
+ARCH := $(shell uname -m | sed 's/x86_64/x86/' | sed 's/aarch64/arm64/' | sed 's/s390x/s390/')
 
 BPF_CFLAGS := -target bpf -D__TARGET_ARCH_$(ARCH) -O2 -g \
 	-Wall -Werror \
