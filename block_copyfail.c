@@ -45,7 +45,7 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-	fprintf(stderr, "block-copyfail: blocker active — authencesn bind blocked\n");
+	fprintf(stderr, "block-copyfail: blocker active — all AF_ALG AEAD binds blocked\n");
 
 	rb = ring_buffer__new(bpf_map__fd(skel->maps.events),
 			      handle_event, NULL, NULL);

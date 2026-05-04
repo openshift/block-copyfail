@@ -6,8 +6,10 @@ the `authencesn` algorithm and `splice()` to corrupt arbitrary files in the kern
 page cache — including setuid binaries like `/usr/bin/su`.
 
 This document provides a **zero-reboot remediation** using a BPF LSM DaemonSet
-that blocks only the vulnerable `authencesn` algorithm bind. It was tested
-end-to-end on three separate OCP 4.22 clusters.
+that blocks all AF_ALG AEAD binds — the subsystem exploited by Copy Fail. This
+prevents bypasses via crypto template nesting (e.g. `pcrypt(authencesn(...))`).
+Other AF_ALG usage (hash, skcipher) is unaffected. Tested end-to-end on three
+separate OCP 4.22 clusters.
 
 ## Quick Start
 
@@ -25,7 +27,7 @@ oc adm policy add-scc-to-user privileged -z default -n block-copyfail
 # 4. Verify
 oc get pods -n block-copyfail     # All nodes should show Running
 oc logs -n block-copyfail -l app=block-copyfail
-# Expected: "block-copyfail: blocker active — authencesn bind blocked"
+# Expected: "block-copyfail: blocker active — all AF_ALG AEAD binds blocked"
 ```
 
 No reboots. No node drains. No pod restarts. Protection is immediate and
@@ -273,8 +275,8 @@ oc delete namespace cve-test
 
 ## BPF LSM DaemonSet Deployment
 
-The BPF LSM approach hooks `socket_bind` at the kernel level and blocks only
-`authencesn` algorithm binds. It is based on
+The BPF LSM approach hooks `socket_bind` at the kernel level and blocks all
+AF_ALG AEAD binds regardless of template nesting. It is based on
 [block-copyfail](https://github.com/atgreen/block-copyfail), rewritten in C
 with libbpf for OCP deployment.
 
@@ -408,7 +410,7 @@ oc logs -n block-copyfail -l app=block-copyfail
 Expected:
 
 ```
-block-copyfail: blocker active — authencesn bind blocked
+block-copyfail: blocker active — all AF_ALG AEAD binds blocked
 ```
 
 ---
@@ -437,14 +439,14 @@ oc logs -n block-copyfail -l app=block-copyfail
 ```
 
 ```
-block-copyfail: blocker active — authencesn bind blocked
+block-copyfail: blocker active — all AF_ALG AEAD binds blocked
 block-copyfail: BLOCKED pid=16777    comm=python3 time=2026-05-01 16:37:23
 ```
 
 ### Verifying Other Algorithms Are Unaffected
 
-Run `verify-algos.py` on a node to confirm that only `authencesn` is blocked
-while other AF\_ALG algorithms (GCM, CCM, SHA-256, AES-CBC) continue to work:
+Run `verify-algos.py` on a node to confirm that all AEAD algorithms are blocked
+while other AF\_ALG types (hash, skcipher) continue to work:
 
 ```bash
 oc debug node/<any-node> -- chroot /host python3 -c "
@@ -472,15 +474,15 @@ for t, n in tests:
 Expected output:
 
 ```
-  ALLOWED  aead/gcm(aes)
-  ALLOWED  aead/ccm(aes)
-  ALLOWED  aead/rfc4106(gcm(aes))
+  BLOCKED  aead/gcm(aes) -- [Errno 1] Operation not permitted
+  BLOCKED  aead/ccm(aes) -- [Errno 1] Operation not permitted
+  BLOCKED  aead/rfc4106(gcm(aes)) -- [Errno 1] Operation not permitted
   ALLOWED  hash/sha256
   ALLOWED  skcipher/cbc(aes)
   BLOCKED  aead/authencesn(hmac(sha256),cbc(aes)) -- [Errno 1] Operation not permitted
 ```
 
-This confirms the BPF LSM only blocks the vulnerable algorithm.
+This confirms the BPF LSM blocks all AEAD binds while leaving other AF_ALG types functional.
 
 ---
 
