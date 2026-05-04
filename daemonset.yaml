@@ -29,7 +29,7 @@ spec:
       - operator: Exists
       containers:
       - name: blocker
-        image: quay.io/mrunalp/block-copyfail:latest
+        image: quay.io/openshift/block-copyfail@sha256:bbf0b19bfb63d79bab6adc47cae70f15c62f83a4a6bcc6f41509656cf0dae52f
         securityContext:
           privileged: true
         volumeMounts:
