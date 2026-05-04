@@ -143,75 +143,12 @@ spec:
 
 ### Step 1: Create the namespace, grant the SCC, and deploy
 
+Create a new `block-copyfail` namespace, grant SCC, and deploy the DaemonSet by applying [the `daemonset.yaml` manifest](daemonset.yaml).
 The privileged SCC must be granted before the DaemonSet pods are created,
 otherwise pod creation will fail with SCC validation errors.
 
 ```bash
-# Create the namespace
-cat <<'EOF' | oc apply -f -
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: block-copyfail
-  labels:
-    pod-security.kubernetes.io/enforce: privileged
-    pod-security.kubernetes.io/audit: privileged
-    pod-security.kubernetes.io/warn: privileged
-EOF
-
-# Grant privileged SCC to the default service account
-oc adm policy add-scc-to-user privileged -z default -n block-copyfail
-
-# Deploy the DaemonSet
-cat <<'EOF' | oc apply -f -
-apiVersion: apps/v1
-kind: DaemonSet
-metadata:
-  name: block-copyfail
-  namespace: block-copyfail
-  labels:
-    app: block-copyfail
-spec:
-  selector:
-    matchLabels:
-      app: block-copyfail
-  template:
-    metadata:
-      labels:
-        app: block-copyfail
-    spec:
-      priorityClassName: system-node-critical
-      tolerations:
-      - operator: Exists
-      containers:
-      - name: blocker
-        image: quay.io/mrunalp/block-copyfail:latest
-        securityContext:
-          privileged: true
-        volumeMounts:
-        - name: bpf
-          mountPath: /sys/fs/bpf
-        - name: btf
-          mountPath: /sys/kernel/btf/vmlinux
-          readOnly: true
-        resources:
-          requests:
-            cpu: 10m
-            memory: 32Mi
-          limits:
-            cpu: 100m
-            memory: 64Mi
-      volumes:
-      - name: bpf
-        hostPath:
-          path: /sys/fs/bpf
-          type: DirectoryOrCreate
-      - name: btf
-        hostPath:
-          path: /sys/kernel/btf/vmlinux
-          type: File
-      terminationGracePeriodSeconds: 5
-EOF
+oc apply -f daemonset.yaml
 ```
 
 ### Step 2: Wait for pods to start on all nodes
