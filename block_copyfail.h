@@ -6,7 +6,6 @@
 #endif
 
 #define AF_ALG 38
-#define SOCKADDR_ALG_NAME_OFFSET 24
 
 struct block_event {
 	__u32 pid;

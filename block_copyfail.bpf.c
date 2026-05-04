@@ -1,8 +1,10 @@
 /* BPF LSM program to block CVE-2026-31431.
  *
- * Hooks socket_bind and blocks AF_ALG binds to the "authencesn" algorithm,
- * which is the only algorithm exploited by the copy-fail vulnerability.
- * All other AF_ALG usage (hash, skcipher, rng, other AEAD) is unaffected.
+ * Hooks socket_bind and blocks all AF_ALG AEAD binds — the subsystem
+ * exploited by Copy Fail.  The vulnerability is in algif_aead, and
+ * authencesn can be nested inside wrapper templates (e.g. pcrypt),
+ * so blocking the entire AEAD type is the only bypass-proof approach.
+ * Other AF_ALG usage (hash, skcipher, rng) is unaffected.
  */
 
 #include <linux/types.h>
@@ -21,13 +23,12 @@ struct sockaddr;
  *   offset 16: __u32  salg_feat
  *   offset 20: __u32  salg_mask
  *   offset 24: __u8   salg_name[64]
- * We need at least 34 bytes to check "authencesn" (10 chars at offset 24).
+ * We only need 7 bytes to check salg_type == "aead\0".
  */
 #define SOCKADDR_ALG_TYPE_OFFSET 2
-#define SOCKADDR_ALG_MIN_LEN 34
+#define SOCKADDR_ALG_CHECK_LEN 7
 
 static const char aead_type[5] = "aead";
-static const char authencesn_prefix[10] = "authencesn";
 
 struct {
 	__uint(type, BPF_MAP_TYPE_RINGBUF);
@@ -41,10 +42,10 @@ int BPF_PROG(block_copyfail, struct socket *sock,
 	if (ret)
 		return ret;
 
-	if (addrlen < SOCKADDR_ALG_MIN_LEN)
+	if (addrlen < SOCKADDR_ALG_CHECK_LEN)
 		return 0;
 
-	__u8 buf[SOCKADDR_ALG_MIN_LEN];
+	__u8 buf[SOCKADDR_ALG_CHECK_LEN];
 
 	if (bpf_probe_read_kernel(buf, sizeof(buf), address) < 0)
 		return 0;
@@ -54,10 +55,6 @@ int BPF_PROG(block_copyfail, struct socket *sock,
 		return 0;
 
 	if (__builtin_memcmp(&buf[SOCKADDR_ALG_TYPE_OFFSET], aead_type, 5) != 0)
-		return 0;
-
-	if (__builtin_memcmp(&buf[SOCKADDR_ALG_NAME_OFFSET],
-			     authencesn_prefix, 10) != 0)
 		return 0;
 
 	struct block_event *evt;

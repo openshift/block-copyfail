@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify that only authencesn is blocked while other AF_ALG algorithms work."""
+"""Verify that all AEAD binds are blocked while other AF_ALG types work."""
 import socket
 
 tests = [
