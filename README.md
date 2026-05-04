@@ -20,7 +20,6 @@ oc debug node/<any-node> -- chroot /host cat /sys/kernel/security/lsm
 
 # 2. Deploy the namespace and grant privileged SCC
 oc apply -f daemonset.yaml
-oc adm policy add-scc-to-user privileged -z default -n block-copyfail
 
 # 3. DaemonSet pods will start automatically on all nodes
 
