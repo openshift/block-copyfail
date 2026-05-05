@@ -1,7 +1,8 @@
 FROM registry.fedoraproject.org/fedora:latest AS builder
 
 RUN dnf install -y \
-    clang llvm bpftool \
+    --setopt=install_weak_deps=0 \
+    clang bpftool \
     libbpf-devel elfutils-libelf-devel zlib-devel \
     make pkg-config gcc \
     && dnf clean all
