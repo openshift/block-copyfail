@@ -54,6 +54,7 @@ spec:
                 values:
                 - arm64
                 - ppc64le
+                - s390x
       priorityClassName: system-node-critical
       tolerations:
       - operator: Exists
