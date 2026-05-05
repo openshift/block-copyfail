@@ -19,7 +19,7 @@ oc debug node/<any-node> -- chroot /host cat /sys/kernel/security/lsm
 # Must contain "bpf"
 
 # 2. Deploy the namespace and grant privileged SCC
-oc apply -f daemonset.yaml
+oc apply -f configs/daemonset
 
 # 3. DaemonSet pods will start automatically on all nodes
 
@@ -31,6 +31,16 @@ oc logs -n cve-2026-31431-mitigation-ebpf -l app=block-copyfail
 
 No reboots. No node drains. No pod restarts. Protection is immediate and
 covers all processes on all nodes (100% coverage).
+
+### MachineSet Quick Start (requires reboot)
+
+```bash
+oc apply -f configs/machine-config
+```
+
+See also - https://access.redhat.com/solutions/7141979,  [[YAML](configs/machine-config-kb/machineconfig-disable-algif.yaml)]
+
+Machine config solution(s) will cause all nodes to reboot due to machine config pool changes (adding kernel arguments)
 
 ## Table of Contents
 
@@ -78,7 +88,7 @@ oc -n cve-2026-31431-test logs -l app=cve-2026-31431-test
 
 **On a vulnerable cluster** you will see:
 
-```
+```output
 === CVE-2026-31431 Vulnerability Test ===
 Target: /usr/bin/su
 
@@ -122,33 +132,23 @@ oc debug node/<any-node> -- chroot /host cat /sys/kernel/security/lsm
 
 Expected output includes `bpf`:
 
-```
+```output
 lockdown,capability,landlock,yama,selinux,bpf
 ```
 
 If `bpf` is **not** present, a one-time MachineConfig is needed (this is the
 only scenario requiring a reboot):
 
-```yaml
-apiVersion: machineconfiguration.openshift.io/v1
-kind: MachineConfig
-metadata:
-  labels:
-    machineconfiguration.openshift.io/role: worker
-  name: 99-enable-bpf-lsm
-spec:
-  kernelArguments:
-    - lsm=lockdown,capability,selinux,bpf
-```
+[Machine Config](configs/machine-config/machineconfig-enable-bpf-lsm.yaml)
 
 ### Step 1: Create the namespace, grant the SCC, and deploy
 
-Create a new `cve-2026-31431-mitigation-ebpf` namespace, grant SCC, and deploy the DaemonSet by applying [the `daemonset.yaml` manifest](daemonset.yaml).
+Create a new `block-copyfail` namespace, grant SCC, and deploy the DaemonSet by applying [the `daemonset.yaml` manifest](configs/daemonset/ds-block-copyfail.yaml).
 The privileged SCC must be granted before the DaemonSet pods are created,
 otherwise pod creation will fail with SCC validation errors.
 
 ```bash
-oc apply -f daemonset.yaml
+oc apply -f configs/daemonset
 ```
 
 ### Step 2: Wait for pods to start on all nodes
@@ -159,7 +159,7 @@ oc get pods -n cve-2026-31431-mitigation-ebpf -o wide
 
 Expected: one pod per node, all `Running`:
 
-```
+```output
 NAME                   READY   STATUS    AGE   NODE
 block-copyfail-2jhzf   1/1     Running   34s   ci-...-master-2
 block-copyfail-4dfq7   1/1     Running   34s   ci-...-master-1
@@ -177,7 +177,7 @@ oc logs -n cve-2026-31431-mitigation-ebpf -l app=block-copyfail
 
 Expected:
 
-```
+```output
 block-copyfail: blocker active — all AF_ALG AEAD binds blocked
 ```
 
@@ -189,7 +189,7 @@ Re-run the same exploit test from the [Confirming Vulnerability](#confirming-vul
 
 **After deploying the BPF LSM DaemonSet**, the output will be:
 
-```
+```output
 === CVE-2026-31431 Vulnerability Test ===
 Target: /usr/bin/su
 
@@ -206,7 +206,7 @@ The DaemonSet logs will show the blocked attempt:
 oc logs -n cve-2026-31431-mitigation-ebpf -l app=block-copyfail
 ```
 
-```
+```output
 block-copyfail: blocker active — all AF_ALG AEAD binds blocked
 block-copyfail: BLOCKED pid=16777    comm=python3 time=2026-05-01 16:37:23
 ```
@@ -241,7 +241,7 @@ for t, n in tests:
 
 Expected output:
 
-```
+```output
   BLOCKED  aead/gcm(aes) -- [Errno 1] Operation not permitted
   BLOCKED  aead/ccm(aes) -- [Errno 1] Operation not permitted
   BLOCKED  aead/rfc4106(gcm(aes)) -- [Errno 1] Operation not permitted
@@ -258,9 +258,9 @@ This confirms the BPF LSM blocks all AEAD binds while leaving other AF_ALG types
 
 The BPF LSM blocker source is in `block-copyfail/`:
 
-```
+```output
 block-copyfail/
-  block_copyfail.bpf.c     # BPF kernel program (LSM hook)
+  block_copyfail.bpf.c      # BPF kernel program (LSM hook)
   block_copyfail.c          # Userspace loader (libbpf skeleton)
   block_copyfail.h          # Shared event struct
   Makefile                  # Build pipeline
@@ -287,7 +287,7 @@ for compilation, UBI 9 minimal for the runtime image (~122 MB).
 Deleting the DaemonSet immediately removes the mitigation on all nodes:
 
 ```bash
-oc delete -f daemonset.yaml
+oc delete -f configs/daemonset
 # or
 oc delete namespace cve-2026-31431-mitigation-ebpf
 ```
