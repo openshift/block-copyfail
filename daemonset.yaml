@@ -2,6 +2,9 @@
 apiVersion: v1
 kind: Namespace
 metadata:
+  annotations:
+    kubernetes.io/description: Block / Detect CopyFail attempts on Openshift
+    openshift.io/display-name: Block CopyFail
   name: cve-2026-31431-mitigation-ebpf
   labels:
     pod-security.kubernetes.io/enforce: privileged
@@ -35,6 +38,7 @@ metadata:
     app: block-copyfail
   annotations:
     kubernetes.io/description: Remediating CVE-2026-31431 with an eBPF DaemonSet.  This is a temporary workaround until the cluster can be updated to pick up a patched kernel.
+    # image.openshift.io/triggers: '[{"from":{"kind":"ImageStreamTag","name":"block-copyfail:latest","namespace":"block-copyfail"},"fieldPath":"spec.template.spec.containers[?(@.name==\"blocker\")].image","paused":false}]'
 spec:
   selector:
     matchLabels:
@@ -65,8 +69,19 @@ spec:
       containers:
       - name: blocker
         image: registry.redhat.io/openshift4/ose-block-copyfail-rhel9@sha256:2ad45164bed4ef8b8661175ac02e891b8bf2bdcdf69bed3526777b4746c3b46a
+        # command:
+        #   - /bin/sh
+        #   - -c
+        #   - |
+        #     /usr/local/bin/block-copyfail
+        #     sleep infinity
         securityContext:
           privileged: true
+        # capabilities:
+        #   add:
+        #     - BPF
+        #   drop:
+        #     - ALL
         volumeMounts:
         - name: bpf
           mountPath: /sys/fs/bpf
