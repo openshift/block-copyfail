@@ -44,6 +44,15 @@ spec:
       labels:
         app: block-copyfail
     spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.io/arch
+                operator: NotIn
+                values:
+                - arm64
       priorityClassName: system-node-critical
       tolerations:
       - operator: Exists
