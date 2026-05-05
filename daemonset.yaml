@@ -49,7 +49,7 @@ spec:
       - operator: Exists
       containers:
       - name: blocker
-        image: quay.io/openshift/block-copyfail@sha256:bbf0b19bfb63d79bab6adc47cae70f15c62f83a4a6bcc6f41509656cf0dae52f
+        image: registry.redhat.io/openshift4/ose-block-copyfail-rhel9@sha256:2ad45164bed4ef8b8661175ac02e891b8bf2bdcdf69bed3526777b4746c3b46a
         securityContext:
           privileged: true
         volumeMounts:
