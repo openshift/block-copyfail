@@ -1,0 +1,14 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  annotations:
+    kubernetes.io/description: Block / Detect CopyFail attempts on Openshift
+    openshift.io/display-name: Block CopyFail
+  name: cve-2026-31431-mitigation-ebpf
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/audit: privileged
+    pod-security.kubernetes.io/warn: privileged
+  annotations:
+    kubernetes.io/description: Remediating CVE-2026-31431 with an eBPF DaemonSet.  This is a temporary workaround until the cluster can be updated to pick up a patched kernel.
