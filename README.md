@@ -14,7 +14,7 @@ separate OCP 4.22 clusters.
 ## Quick Start
 
 ```bash
-# 1. Verify BPF LSM is enabled (RHEL CoreOS 9.8 has it by default)
+# 1. Verify BPF LSM is enabled (All versions of RHEL CoreOS enable this by default)
 oc debug node/<any-node> -- chroot /host cat /sys/kernel/security/lsm
 # Must contain "bpf"
 
