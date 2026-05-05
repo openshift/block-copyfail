@@ -53,6 +53,7 @@ spec:
                 operator: NotIn
                 values:
                 - arm64
+                - ppc64le
       priorityClassName: system-node-critical
       tolerations:
       - operator: Exists
