@@ -24,8 +24,8 @@ oc apply -f daemonset.yaml
 # 3. DaemonSet pods will start automatically on all nodes
 
 # 4. Verify
-oc get pods -n block-copyfail     # All nodes should show Running
-oc logs -n block-copyfail -l app=block-copyfail
+oc get pods -n cve-2026-31431-mitigation-ebpf     # All nodes should show Running
+oc logs -n cve-2026-31431-mitigation-ebpf -l app=block-copyfail
 # Expected: "block-copyfail: blocker active — all AF_ALG AEAD binds blocked"
 ```
 
@@ -143,7 +143,7 @@ spec:
 
 ### Step 1: Create the namespace, grant the SCC, and deploy
 
-Create a new `block-copyfail` namespace, grant SCC, and deploy the DaemonSet by applying [the `daemonset.yaml` manifest](daemonset.yaml).
+Create a new `cve-2026-31431-mitigation-ebpf` namespace, grant SCC, and deploy the DaemonSet by applying [the `daemonset.yaml` manifest](daemonset.yaml).
 The privileged SCC must be granted before the DaemonSet pods are created,
 otherwise pod creation will fail with SCC validation errors.
 
@@ -154,7 +154,7 @@ oc apply -f daemonset.yaml
 ### Step 2: Wait for pods to start on all nodes
 
 ```bash
-oc get pods -n block-copyfail -o wide
+oc get pods -n cve-2026-31431-mitigation-ebpf -o wide
 ```
 
 Expected: one pod per node, all `Running`:
@@ -172,7 +172,7 @@ block-copyfail-xsh6d   1/1     Running   34s   ci-...-master-0
 ### Step 3: Verify the blocker is active
 
 ```bash
-oc logs -n block-copyfail -l app=block-copyfail
+oc logs -n cve-2026-31431-mitigation-ebpf -l app=block-copyfail
 ```
 
 Expected:
@@ -203,7 +203,7 @@ RESULT: CANNOT TEST - AF_ALG or splice not available/permitted
 The DaemonSet logs will show the blocked attempt:
 
 ```bash
-oc logs -n block-copyfail -l app=block-copyfail
+oc logs -n cve-2026-31431-mitigation-ebpf -l app=block-copyfail
 ```
 
 ```
@@ -289,7 +289,7 @@ Deleting the DaemonSet immediately removes the mitigation on all nodes:
 ```bash
 oc delete -f daemonset.yaml
 # or
-oc delete namespace block-copyfail
+oc delete namespace cve-2026-31431-mitigation-ebpf
 ```
 
 The BPF program detaches automatically when the loader process exits. No reboot
