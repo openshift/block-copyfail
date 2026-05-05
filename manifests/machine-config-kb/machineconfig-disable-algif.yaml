@@ -1,0 +1,24 @@
+---
+apiVersion: machineconfiguration.openshift.io/v1
+kind: MachineConfig
+metadata:
+  annotations:
+    solution: https://access.redhat.com/solutions/7141979
+  labels:
+    machineconfiguration.openshift.io/role: master
+  name: 99-disable-algif-builtin-master
+spec:
+  kernelArguments:
+    - initcall_blacklist=algif_aead_init
+---
+apiVersion: machineconfiguration.openshift.io/v1
+kind: MachineConfig
+metadata:
+  annotations:
+    solution: https://access.redhat.com/solutions/7141979
+  labels:
+    machineconfiguration.openshift.io/role: worker
+  name: 99-disable-algif-builtin-worker
+spec:
+  kernelArguments:
+    - initcall_blacklist=algif_aead_init

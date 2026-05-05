@@ -1,0 +1,39 @@
+---
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: block-copyfail
+  namespace: cve-2026-31431-mitigation-ebpf
+spec:
+  tags:
+    - name: latest
+---
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  labels:
+    app: block-copyfail
+    app.kubernetes.io/component: block-copyfail
+    app.kubernetes.io/instance: block-copyfail
+    app.kubernetes.io/name: block-copyfail
+    app.kubernetes.io/part-of: block-copyfail
+  name: block-copyfail
+  namespace: cve-2026-31431-mitigation-ebpf
+spec:
+  output:
+    to:
+      kind: ImageStreamTag
+      name: block-copyfail:latest
+  runPolicy: SerialLatestOnly
+  source:
+    contextDir: /
+    git:
+      uri: https://github.com/openshift/block-copyfail
+      ref: main
+    type: Git
+  strategy:
+    dockerStrategy:
+      dockerfilePath: Dockerfile
+    type: Docker
+  triggers:
+    - type: ConfigChange
