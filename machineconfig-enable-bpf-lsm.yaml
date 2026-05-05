@@ -3,8 +3,18 @@ apiVersion: machineconfiguration.openshift.io/v1
 kind: MachineConfig
 metadata:
   labels:
+    machineconfiguration.openshift.io/role: master
+  name: 99-enable-bpf-lsm-master
+spec:
+  kernelArguments:
+    - lsm=lockdown,capability,selinux,bpf
+---
+apiVersion: machineconfiguration.openshift.io/v1
+kind: MachineConfig
+metadata:
+  labels:
     machineconfiguration.openshift.io/role: worker
-  name: 99-enable-bpf-lsm
+  name: 99-enable-bpf-lsm-worker
 spec:
   kernelArguments:
     - lsm=lockdown,capability,selinux,bpf
