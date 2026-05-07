@@ -15,6 +15,15 @@ static void sig_handler(int sig)
 	running = 0;
 }
 
+static const char *hook_name(__u32 hook)
+{
+	switch (hook) {
+	case BLOCK_HOOK_CF1: return "AF_ALG-AEAD";
+	case BLOCK_HOOK_CF2: return "ESP-UDP-splice";
+	default:             return "unknown";
+	}
+}
+
 static int handle_event(void *ctx, void *data, size_t len)
 {
 	struct block_event *evt = data;
@@ -23,8 +32,8 @@ static int handle_event(void *ctx, void *data, size_t len)
 	char ts[32];
 
 	strftime(ts, sizeof(ts), "%Y-%m-%d %H:%M:%S", tm);
-	fprintf(stderr, "block-copyfail: BLOCKED pid=%-8u comm=%.*s time=%s\n",
-		evt->pid, 16, evt->comm, ts);
+	fprintf(stderr, "block-copyfail: BLOCKED [%s] pid=%-8u comm=%.*s time=%s\n",
+		hook_name(evt->hook), evt->pid, 16, evt->comm, ts);
 	return 0;
 }
 
@@ -45,7 +54,7 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-	fprintf(stderr, "block-copyfail: blocker active — all AF_ALG AEAD binds blocked\n");
+	fprintf(stderr, "block-copyfail: blocker active — AF_ALG AEAD binds + UDP splice blocked\n");
 
 	rb = ring_buffer__new(bpf_map__fd(skel->maps.events),
 			      handle_event, NULL, NULL);
