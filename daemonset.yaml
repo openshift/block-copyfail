@@ -10,6 +10,15 @@ metadata:
   annotations:
     kubernetes.io/description: Remediating CVE-2026-31431 with an eBPF DaemonSet.  This is a temporary workaround until the cluster can be updated to pick up a patched kernel.
 ---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: block-copyfail
+  namespace: cve-2026-31431-mitigation-ebpf
+  annotations:
+    kubernetes.io/description: Remediating CVE-2026-31431 with an eBPF DaemonSet.  This is a temporary workaround until the cluster can be updated to pick up a patched kernel.
+automountServiceAccountToken: false
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
@@ -23,7 +32,7 @@ roleRef:
   name: system:openshift:scc:privileged
 subjects:
 - kind: ServiceAccount
-  name: default
+  name: block-copyfail
   namespace: cve-2026-31431-mitigation-ebpf
 ---
 apiVersion: apps/v1
@@ -59,6 +68,7 @@ spec:
                 operator: In
                 values:
                 - linux
+      serviceAccountName: block-copyfail
       priorityClassName: system-node-critical
       tolerations:
       - operator: Exists
