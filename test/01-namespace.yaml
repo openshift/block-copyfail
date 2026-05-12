@@ -1,6 +1,0 @@
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: cve-2026-31431-test
-  annotations:
-    kubernetes.io/description: Testing CVE-2026-31431.
