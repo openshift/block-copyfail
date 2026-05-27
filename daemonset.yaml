@@ -2,56 +2,56 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: cve-2026-31431-mitigation-ebpf
+  name: openshift-cve-mitigations
   labels:
     pod-security.kubernetes.io/enforce: privileged
     pod-security.kubernetes.io/audit: privileged
     pod-security.kubernetes.io/warn: privileged
   annotations:
-    kubernetes.io/description: Remediating CVE-2026-31431 with an eBPF DaemonSet.  This is a temporary workaround until the cluster can be updated to pick up a patched kernel.
+    kubernetes.io/description: Mitigating kernel vulnerabilities (CVE-2026-31431, CVE-2026-43284, CVE-2026-46300) with an eBPF DaemonSet.  This is a temporary workaround until the cluster can be updated to pick up a patched kernel.
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: block-copyfail
-  namespace: cve-2026-31431-mitigation-ebpf
+  name: kernel-ebpf-lsm-loader
+  namespace: openshift-cve-mitigations
   annotations:
-    kubernetes.io/description: Remediating CVE-2026-31431 with an eBPF DaemonSet.  This is a temporary workaround until the cluster can be updated to pick up a patched kernel.
+    kubernetes.io/description: Mitigating kernel vulnerabilities (CVE-2026-31431, CVE-2026-43284, CVE-2026-46300) with an eBPF DaemonSet.  This is a temporary workaround until the cluster can be updated to pick up a patched kernel.
 automountServiceAccountToken: false
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: system:openshift:scc:privileged
-  namespace: cve-2026-31431-mitigation-ebpf
+  namespace: openshift-cve-mitigations
   annotations:
-    kubernetes.io/description: Remediating CVE-2026-31431 with an eBPF DaemonSet.  This is a temporary workaround until the cluster can be updated to pick up a patched kernel.
+    kubernetes.io/description: Mitigating kernel vulnerabilities (CVE-2026-31431, CVE-2026-43284, CVE-2026-46300) with an eBPF DaemonSet.  This is a temporary workaround until the cluster can be updated to pick up a patched kernel.
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: system:openshift:scc:privileged
 subjects:
 - kind: ServiceAccount
-  name: block-copyfail
-  namespace: cve-2026-31431-mitigation-ebpf
+  name: kernel-ebpf-lsm-loader
+  namespace: openshift-cve-mitigations
 ---
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
-  name: cve-2026-31431-mitigation-ebpf
-  namespace: cve-2026-31431-mitigation-ebpf
+  name: kernel-ebpf-lsm-loader
+  namespace: openshift-cve-mitigations
   labels:
-    app: block-copyfail
+    app: kernel-ebpf-lsm-loader
   annotations:
-    kubernetes.io/description: Remediating CVE-2026-31431 with an eBPF DaemonSet.  This is a temporary workaround until the cluster can be updated to pick up a patched kernel.
+    kubernetes.io/description: Mitigating kernel vulnerabilities (CVE-2026-31431, CVE-2026-43284, CVE-2026-46300) with an eBPF DaemonSet.  This is a temporary workaround until the cluster can be updated to pick up a patched kernel.
 spec:
   selector:
     matchLabels:
-      app: block-copyfail
+      app: kernel-ebpf-lsm-loader
   template:
     metadata:
       labels:
-        app: block-copyfail
+        app: kernel-ebpf-lsm-loader
     spec:
       affinity:
         nodeAffinity:
@@ -68,13 +68,16 @@ spec:
                 operator: In
                 values:
                 - linux
-      serviceAccountName: block-copyfail
+      serviceAccountName: kernel-ebpf-lsm-loader
       priorityClassName: system-node-critical
       tolerations:
       - operator: Exists
       containers:
       - name: blocker
-        image: registry.redhat.io/openshift4/ose-block-copyfail-rhel9@sha256:2ad45164bed4ef8b8661175ac02e891b8bf2bdcdf69bed3526777b4746c3b46a
+        image: registry.redhat.io/openshift4/ose-block-copyfail-rhel9:latest
+        env:
+        - name: MITIGATIONS
+          value: "all"
         securityContext:
           privileged: true
         volumeMounts:
@@ -82,6 +85,9 @@ spec:
           mountPath: /sys/fs/bpf
         - name: btf
           mountPath: /sys/kernel/btf/vmlinux
+          readOnly: true
+        - name: tracefs
+          mountPath: /sys/kernel/tracing
           readOnly: true
         resources:
           requests:
@@ -99,4 +105,8 @@ spec:
         hostPath:
           path: /sys/kernel/btf/vmlinux
           type: File
+      - name: tracefs
+        hostPath:
+          path: /sys/kernel/tracing
+          type: Directory
       terminationGracePeriodSeconds: 5

@@ -13,16 +13,16 @@ LDFLAGS := $(shell pkg-config --libs libbpf 2>/dev/null || echo "-lbpf -lelf -lz
 
 .PHONY: all clean
 
-all: block-copyfail
+all: mitigation-loader
 
-block_copyfail.bpf.o: block_copyfail.bpf.c block_copyfail.h
+mitigations.bpf.o: mitigations.bpf.c mitigations.h
 	$(CLANG) $(BPF_CFLAGS) -c $< -o $@
 
-block_copyfail.skel.h: block_copyfail.bpf.o
+mitigations.skel.h: mitigations.bpf.o
 	$(BPFTOOL) gen skeleton $< > $@
 
-block-copyfail: block_copyfail.c block_copyfail.h block_copyfail.skel.h
+mitigation-loader: mitigations.c mitigations.h mitigations.skel.h
 	$(CC) $(CFLAGS) -o $@ $< $(LDFLAGS)
 
 clean:
-	rm -f block_copyfail.bpf.o block_copyfail.skel.h block-copyfail
+	rm -f mitigations.bpf.o mitigations.skel.h mitigation-loader

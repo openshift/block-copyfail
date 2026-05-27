@@ -1,15 +1,29 @@
 ## Summary
 
-CVE-2026-31431 ("Copy Fail") is a Linux kernel privilege escalation vulnerability
-in the `algif_aead` cryptographic interface. An attacker uses AF\_ALG sockets with
-the `authencesn` algorithm and `splice()` to corrupt arbitrary files in the kernel
-page cache — including setuid binaries like `/usr/bin/su`.
+This repo provides **zero-reboot BPF LSM mitigations** for Linux kernel
+vulnerabilities:
 
-This document provides a **zero-reboot remediation** using a BPF LSM DaemonSet
-that blocks all AF_ALG AEAD binds — the subsystem exploited by Copy Fail. This
-prevents bypasses via crypto template nesting (e.g. `pcrypt(authencesn(...))`).
-Other AF_ALG usage (hash, skcipher) is unaffected. Tested end-to-end on three
-separate OCP 4.22 clusters.
+**CVE-2026-31431** — CopyFail.  Privilege escalation via `algif_aead`.  An
+attacker uses AF\_ALG sockets with the `authencesn` algorithm and `splice()` to
+corrupt arbitrary files in the page cache (e.g. `/usr/bin/su`).
+
+**CVE-2026-43284** — Dirty Frag (IPsec ESP).  Privilege escalation via
+xfrm-ESP page-cache write paths.  Two attack vectors are blocked:
+- **UDP MSG\_SPLICE\_PAGES** globally (splice-to-UDP primitive, kernel 6.4+)
+- **UDP\_ENCAP** from non-init net namespaces (ESP-in-UDP from containers)
+
+**CVE-2026-43500** — Dirty Frag (rxrpc).  Does not affect Red Hat products;
+disabled by default.  Blocks:
+- **AF\_RXRPC** socket creation globally (rxrpc/rxkad path)
+
+**CVE-2026-46300** — Fragnesia (ESP-in-TCP).  Privilege escalation via
+ESP-in-TCP page-cache write path.  Blocks:
+- **TCP\_ULP "espintcp"** globally (kTLS `"tls"` is unaffected)
+
+All mitigations are deployed as a single DaemonSet. By default the three CVEs
+affecting Red Hat products are active (CVE-2026-43500 is excluded). Individual
+mitigations can be toggled via the `MITIGATIONS` environment variable on the
+DaemonSet.
 
 ## Quick Start
 
@@ -24,17 +38,40 @@ oc apply -f daemonset.yaml
 # 3. DaemonSet pods will start automatically on all nodes
 
 # 4. Verify
-oc get pods -n cve-2026-31431-mitigation-ebpf     # All nodes should show Running
-oc logs -n cve-2026-31431-mitigation-ebpf -l app=block-copyfail
-# Expected: "block-copyfail: blocker active — all AF_ALG AEAD binds blocked"
+oc get pods -n openshift-cve-mitigations     # All nodes should show Running
+oc logs -n openshift-cve-mitigations -l app=kernel-ebpf-lsm-loader
+# Expected: "mitigation-loader: active mitigations: CVE-2026-31431 CVE-2026-43284 CVE-2026-46300"
 ```
 
 No reboots. No node drains. No pod restarts. Protection is immediate and
 covers all processes on all nodes (100% coverage).
 
+### Selecting Mitigations
+
+By default the three CVEs affecting Red Hat products are enabled
+(`MITIGATIONS=all`). To enable only specific mitigations, set the `MITIGATIONS`
+environment variable to a comma-separated list of CVE numbers:
+
+| Value              | What it enables                                           |
+|--------------------|-----------------------------------------------------------|
+| `all`              | CVE-2026-31431 + CVE-2026-43284 + CVE-2026-46300 (default) |
+| `all-cves`         | All four CVEs including CVE-2026-43500                    |
+| `CVE-2026-31431`   | CopyFail — AF\_ALG AEAD binds                            |
+| `CVE-2026-43284`   | Dirty Frag (IPsec ESP) — UDP splice + UDP\_ENCAP         |
+| `CVE-2026-43500`   | Dirty Frag (rxrpc) — AF\_RXRPC (not in `all`)            |
+| `CVE-2026-46300`   | Fragnesia — TCP\_ULP "espintcp"                          |
+
+Example — enable only CopyFail and Fragnesia:
+
+```yaml
+env:
+- name: MITIGATIONS
+  value: "CVE-2026-31431,CVE-2026-46300"
+```
+
 ## Table of Contents
 
-1. [How the Exploit Works](#how-the-exploit-works)
+1. [How the Exploits Work](#how-the-exploits-work)
 2. [Confirming Vulnerability on Your Cluster](#confirming-vulnerability-on-your-cluster)
 3. [BPF LSM DaemonSet Deployment](#bpf-lsm-daemonset-deployment)
 4. [Post-Deployment Verification](#post-deployment-verification)
@@ -43,7 +80,9 @@ covers all processes on all nodes (100% coverage).
 
 ---
 
-## How the Exploit Works
+## How the Exploits Work
+
+### CVE-2026-31431 — CopyFail
 
 The exploit chains three kernel features:
 
@@ -57,6 +96,31 @@ The exploit chains three kernel features:
 
 The attacker corrupts `/usr/bin/su` in the page cache (without write access to
 the file), then executes it to gain root.
+
+### CVE-2026-43284 — Dirty Frag (IPsec ESP)
+
+Page-cache corruption through the kernel's IPsec/ESP network subsystem:
+
+1. **UDP splice primitive** — MSG\_SPLICE\_PAGES on UDP sockets lets the ESP
+   decryption engine overwrite page-cache pages in place (kernel 6.4+)
+2. **ESP-in-UDP from containers** — `setsockopt(UDP_ENCAP)` configures UDP
+   encapsulation for IPsec.  Blocked from non-init net namespaces (containers)
+   while preserving host-level IPsec/VPN.
+
+### CVE-2026-43500 — Dirty Frag (rxrpc)
+
+Does not affect Red Hat products.  Disabled by default.
+
+1. **rxrpc/rxkad path** — AF\_RXRPC sockets allow the rxkad security class to
+   write into page-cache pages via the Rx protocol's large-packet reassembly
+
+### CVE-2026-46300 — Fragnesia (ESP-in-TCP)
+
+Page-cache corruption through ESP-in-TCP:
+
+1. **ESP-in-TCP** — `setsockopt(TCP_ULP, "espintcp")` sets up ESP decryption
+   on a TCP socket, enabling the same page-cache corruption.  Blocked globally;
+   kTLS (`"tls"`) is unaffected.
 
 ---
 
@@ -106,9 +170,12 @@ oc delete namespace cve-2026-31431-test
 
 ## BPF LSM DaemonSet Deployment
 
-The BPF LSM approach hooks `socket_bind` at the kernel level and blocks all
-AF_ALG AEAD binds regardless of template nesting. It is based on
-[block-copyfail](https://github.com/atgreen/block-copyfail), rewritten in C
+The BPF LSM approach hooks `socket_bind`, `socket_create`, `socket_sendmsg`,
+and `socket_setsockopt` at the kernel level to block the attack primitives used
+by CVE-2026-31431, CVE-2026-43284, CVE-2026-43500 (disabled by default),
+and CVE-2026-46300. Based on
+[block-copyfail](https://github.com/atgreen/block-copyfail) and
+[block-dirtyfrag](https://github.com/mrunalp/block-dirtyfrag), rewritten in C
 with libbpf for OCP deployment.
 
 ### Prerequisites
@@ -143,7 +210,7 @@ spec:
 
 ### Step 1: Create the namespace, grant the SCC, and deploy
 
-Create a new `cve-2026-31431-mitigation-ebpf` namespace, grant SCC, and deploy the DaemonSet by applying [the `daemonset.yaml` manifest](daemonset.yaml).
+Create a new `openshift-cve-mitigations` namespace, grant SCC, and deploy the DaemonSet by applying [the `daemonset.yaml` manifest](daemonset.yaml).
 The privileged SCC must be granted before the DaemonSet pods are created,
 otherwise pod creation will fail with SCC validation errors.
 
@@ -154,31 +221,32 @@ oc apply -f daemonset.yaml
 ### Step 2: Wait for pods to start on all nodes
 
 ```bash
-oc get pods -n cve-2026-31431-mitigation-ebpf -o wide
+oc get pods -n openshift-cve-mitigations -o wide
 ```
 
 Expected: one pod per node, all `Running`:
 
 ```
 NAME                   READY   STATUS    AGE   NODE
-block-copyfail-2jhzf   1/1     Running   34s   ci-...-master-2
-block-copyfail-4dfq7   1/1     Running   34s   ci-...-master-1
-block-copyfail-c2ts8   1/1     Running   34s   ci-...-worker-c
-block-copyfail-ctblk   1/1     Running   34s   ci-...-worker-a
-block-copyfail-m26sx   1/1     Running   34s   ci-...-worker-b
-block-copyfail-xsh6d   1/1     Running   34s   ci-...-master-0
+kernel-ebpf-lsm-loader-2jhzf   1/1     Running   34s   ci-...-master-2
+kernel-ebpf-lsm-loader-4dfq7   1/1     Running   34s   ci-...-master-1
+kernel-ebpf-lsm-loader-c2ts8   1/1     Running   34s   ci-...-worker-c
+kernel-ebpf-lsm-loader-ctblk   1/1     Running   34s   ci-...-worker-a
+kernel-ebpf-lsm-loader-m26sx   1/1     Running   34s   ci-...-worker-b
+kernel-ebpf-lsm-loader-xsh6d   1/1     Running   34s   ci-...-master-0
 ```
 
 ### Step 3: Verify the blocker is active
 
 ```bash
-oc logs -n cve-2026-31431-mitigation-ebpf -l app=block-copyfail
+oc logs -n openshift-cve-mitigations -l app=kernel-ebpf-lsm-loader
 ```
 
 Expected:
 
 ```
-block-copyfail: blocker active — all AF_ALG AEAD binds blocked
+mitigation-loader: init net namespace inum=4026531840
+mitigation-loader: active mitigations: CVE-2026-31431 CVE-2026-43284 CVE-2026-46300
 ```
 
 ---
@@ -203,12 +271,13 @@ RESULT: CANNOT TEST - AF_ALG or splice not available/permitted
 The DaemonSet logs will show the blocked attempt:
 
 ```bash
-oc logs -n cve-2026-31431-mitigation-ebpf -l app=block-copyfail
+oc logs -n openshift-cve-mitigations -l app=kernel-ebpf-lsm-loader
 ```
 
 ```
-block-copyfail: blocker active — all AF_ALG AEAD binds blocked
-block-copyfail: BLOCKED pid=16777    comm=python3 time=2026-05-01 16:37:23
+mitigation-loader: init net namespace inum=4026531840
+mitigation-loader: active mitigations: CVE-2026-31431 CVE-2026-43284 CVE-2026-46300
+mitigation-loader: BLOCKED CVE-2026-31431 AF_ALG AEAD bind pid=16777    comm=python3 time=2026-05-01 16:37:23
 ```
 
 ### Verifying Other Algorithms Are Unaffected
@@ -256,25 +325,21 @@ This confirms the BPF LSM blocks all AEAD binds while leaving other AF_ALG types
 
 ## Building the Image from Source
 
-The BPF LSM blocker source is in `block-copyfail/`:
-
 ```
-block-copyfail/
-  block_copyfail.bpf.c     # BPF kernel program (LSM hook)
-  block_copyfail.c          # Userspace loader (libbpf skeleton)
-  block_copyfail.h          # Shared event struct
-  Makefile                  # Build pipeline
-  Dockerfile                # Multi-stage build
-  daemonset.yaml            # Namespace + DaemonSet manifest
-  trigger-test.py           # Quick validation script
+mitigations.bpf.c        # BPF kernel programs (CVE-2026-31431 + CVE-2026-43284 + CVE-2026-43500 + CVE-2026-46300)
+mitigations.c             # Userspace loader with MITIGATIONS env var parsing (accepts CVE numbers)
+mitigations.h             # Shared event struct and block reason constants
+Makefile                  # Build pipeline
+Dockerfile                # Multi-stage build
+daemonset.yaml            # Namespace + DaemonSet manifest
+trigger-test.py           # Quick CopyFail validation script
 ```
 
 Build and push:
 
 ```bash
-cd block-copyfail/
-podman build -t quay.io/<org>/block-copyfail:latest .
-podman push quay.io/<org>/block-copyfail:latest
+podman build -t quay.io/<org>/mitigation-loader:latest .
+podman push quay.io/<org>/mitigation-loader:latest
 ```
 
 The Dockerfile uses a multi-stage build: Fedora with clang/bpftool/libbpf-devel
@@ -289,7 +354,7 @@ Deleting the DaemonSet immediately removes the mitigation on all nodes:
 ```bash
 oc delete -f daemonset.yaml
 # or
-oc delete namespace cve-2026-31431-mitigation-ebpf
+oc delete namespace openshift-cve-mitigations
 ```
 
 The BPF program detaches automatically when the loader process exits. No reboot
