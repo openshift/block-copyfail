@@ -74,7 +74,7 @@ spec:
       - operator: Exists
       containers:
       - name: blocker
-        image: registry.redhat.io/openshift4/ose-block-copyfail-rhel9:latest
+        image: registry.redhat.io/openshift4/ose-block-copyfail-rhel9@sha256:70844db7f0c015044c621b472f58378a659d10e48866aba1a0bdd48aaf16f1cd
         env:
         - name: MITIGATIONS
           value: "all"
